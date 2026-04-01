@@ -4,22 +4,6 @@
 
 功能：查询新闻联播内容，并使用 AI 进行智能总结和分析。
 
-## ⚠️ 重要提示
-
-**本插件适用于 AstrBot v4.5.7+ 版本**
-
-使用新的 LLM 调用方式：
-```python
-# 旧方式（已废弃）
-provider = self.context.get_using_provider()
-response = await provider.text_chat(prompt=prompt)
-
-# 新方式（推荐）
-umo = event.unified_msg_origin
-provider_id = await self.context.get_current_chat_provider_id(umo=umo)
-response = await self.context.llm_generate(chat_provider_id=provider_id, prompt=prompt)
-```
-
 ## 功能特性
 
 - **日期查询**: 查询指定日期的新闻联播内容
@@ -73,7 +57,6 @@ response = await self.context.llm_generate(chat_provider_id=provider_id, prompt=
 
 ```
 /xinwen-search 经济        # 搜索包含"经济"的新闻
-/xinwen-search 习近平      # 搜索包含"习近平"的新闻
 /xinwen-search 科技        # 搜索包含"科技"的新闻
 ```
 

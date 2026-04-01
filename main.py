@@ -472,13 +472,13 @@ class XinwenLianboPlugin(Star):
         result_text = f"## 最近 {len(results)} 天新闻联播\n\n"
         for news in results:
             result_text += f"### {news.date_display}\n"
-            for idx, item in enumerate(news.items[:5], 1):
+            for idx, item in enumerate(news.items, 1):
                 result_text += f"{idx}. {item.title}"
                 if item.category:
                     result_text += f" `[{item.category}]`"
                 result_text += "\n"
-            if len(news.items) > 5:
-                result_text += f"... 还有 {len(news.items) - 5} 条新闻\n"
+            if len(news.items) >= 8:
+                result_text += f"\n> 共 {len(news.items)} 条新闻\n"
             result_text += "\n"
 
         yield event.plain_result(result_text)
