@@ -125,72 +125,18 @@ llm_settings:
 - 数据格式: Markdown
 - 更新频率: 每日更新
 
-### LLM 调用方式（v4.5.7+）
-
-```python
-async def _summarize_with_ai(self, event: AstrMessageEvent, news: DailyNews):
-    # 步骤 1: 获取当前会话的 provider_id
-    umo = event.unified_msg_origin
-    provider_id = await self.context.get_current_chat_provider_id(umo=umo)
-    
-    # 步骤 2: 调用 llm_generate
-    llm_resp = await self.context.llm_generate(
-        chat_provider_id=provider_id,
-        prompt="你的提示词"
-    )
-    
-    # 步骤 3: 获取结果
-    return llm_resp.completion_text
-```
-
 ### 缓存机制
 - 本地文件缓存，减少网络请求
 - 缓存有效期：1 小时
 - 日期列表缓存：24 小时
 
-## 文件结构
-
-```
-xinwen_lianbo/
-├── __init__.py            # 插件入口
-├── main.py                # 主插件代码
-├── README.md              # 本文件
-├── test_llm.py            # LLM 调用测试脚本
-├── data/                  # 数据目录
-└── cache/                 # 缓存目录
-    ├── available_dates.json
-    └── 20260330.md
-```
-
-## 调试方法
-
-### 测试 LLM 调用
-
-```bash
-cd xinwen_lianbo
-python test_llm.py
-```
-
-### 查看日志
-
-```bash
-tail -f logs/astrbot.log
-```
-
-### 启用调试模式
-
-在 `main.py` 中添加:
-```python
-logger.debug(f"Provider ID: {provider_id}")
-logger.debug(f"Prompt: {prompt[:100]}...")
-```
 
 ## 注意事项
 
 1. **版本要求**: AstrBot >= v4.5.7
 2. **网络依赖**: 首次查询需要从 GitHub 下载数据
 3. **数据范围**: 数据从 2023 年开始
-4. **LLM 配置**: 需要配置 LLM 才能使用总结功能
+4. **LLM 配置**: 需要配置 LLM 才能使用总结功能(Dp 等国内模型可能不能总结)
 
 ## 许可证
 
