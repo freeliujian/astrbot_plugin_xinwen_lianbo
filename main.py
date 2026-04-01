@@ -388,7 +388,7 @@ class XinwenLianboPlugin(Star):
             return
 
         # 显示统计信息
-        news_stats = f"📊 新闻统计：共 {len(news.items)} 条新闻"
+        news_stats = f"新闻统计：共 {len(news.items)} 条新闻"
         category_counts = {}
         for item in news.items:
             cat = item.category or "综合"
@@ -397,7 +397,7 @@ class XinwenLianboPlugin(Star):
             news_stats += "（" + ", ".join([f"{k}:{v}" for k, v in category_counts.items()]) + "）"
 
         yield event.plain_result(news_stats)
-        yield event.plain_result("🤖 正在进行 AI 分析，请稍候（可能需要 10-30 秒）...")
+        yield event.plain_result("正在进行 AI 分析，请稍候（可能需要 10-30 秒）...")
 
         # AI 总结
         summary = await self._summarize_with_ai(event, news, summary_type=style)
