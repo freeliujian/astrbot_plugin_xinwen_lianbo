@@ -11,11 +11,15 @@ import json
 from datetime import datetime, timedelta
 from typing import List, Optional
 from dataclasses import dataclass
+from xml.etree import ElementTree as ET
 
+import markdown
+
+import asyncio
 import aiohttp
 import aiofiles
 from astrbot.api.event import filter, AstrMessageEvent
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, register, StarTools
 from astrbot.api import logger
 
 
@@ -36,57 +40,42 @@ class DailyNews:
     raw_content: str
 
 
-@register("xinwen_lianbo", "Your Name", "新闻联播查询插件 - 查询并 AI 总结新闻联播内容", "1.0.0")
+@register("xinwen_lianbo", "freeliujian", "新闻联播查询插件 - 查询并 AI 总结新闻联播内容", "1.0.0")
 class XinwenLianboPlugin(Star):
-    """新闻联播查询插件主类"""
 
     DATA_SOURCE_URL = "https://raw.githubusercontent.com/DuckBurnIncense/xin-wen-lian-bo/master/news/{date}.md"
+
+    CONCURRENCY_LIMIT = 10
 
     def __init__(self, context: Context):
         super().__init__(context)
 
-        self.plugin_dir = os.path.dirname(__file__)
-        self.data_dir = os.path.join(self.plugin_dir, "data")
-        self.cache_dir = os.path.join(self.plugin_dir, "cache")
-        os.makedirs(self.data_dir, exist_ok=True)
-        os.makedirs(self.cache_dir, exist_ok=True)
+        base_dir = StarTools.get_data_dir()
+        self.cache_dir = base_dir / "cache"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        self.cache_duration = 3600
-        self.available_dates = self._load_available_dates()
+        self.cache_duration = 86400
+        self.prompts = self._load_prompts()
 
-    def _load_available_dates(self) -> List[str]:
-        """加载可用日期列表"""
-        cache_file = os.path.join(self.cache_dir, "available_dates.json")
-        if os.path.exists(cache_file):
-            try:
-                with open(cache_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    cached_time = datetime.fromisoformat(data.get('cached_at', '2000-01-01'))
-                    if datetime.now() - cached_time < timedelta(hours=24):
-                        return data.get('dates', [])
-            except Exception as e:
-                logger.warning(f"加载可用日期缓存失败：{e}")
-        return []
-
-    def _save_available_dates(self, dates: List[str]):
-        """保存可用日期列表"""
-        cache_file = os.path.join(self.cache_dir, "available_dates.json")
+    def _load_prompts(self) -> dict:
+        """从 JSON 文件加载提示词模板"""
+        prompts_file = os.path.join(os.path.dirname(__file__), "prompts.json")
         try:
-            with open(cache_file, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'dates': dates,
-                    'cached_at': datetime.now().isoformat()
-                }, f, ensure_ascii=False, indent=2)
+            with open(prompts_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
         except Exception as e:
-            logger.warning(f"保存可用日期缓存失败：{e}")
+            logger.error(f"加载提示词文件失败：{e}")
+            return {}
 
-    async def _fetch_from_github(self, date: str) -> Optional[str]:
-        """从 GitHub 获取指定日期的新闻"""
+    async def _fetch_from_github(
+        self, date: str, session: Optional[aiohttp.ClientSession] = None
+    ) -> Optional[str]:
+        """从 GitHub 获取指定日期的新闻，支持传入共享 session"""
         url = self.DATA_SOURCE_URL.format(date=date)
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+        async def _do_fetch(s: aiohttp.ClientSession) -> Optional[str]:
+            try:
+                async with s.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
                     if response.status == 200:
                         content = await response.text()
                         await self._save_to_cache(date, content)
@@ -94,9 +83,15 @@ class XinwenLianboPlugin(Star):
                     else:
                         logger.warning(f"获取 {date} 新闻失败，状态码：{response.status}")
                         return None
-        except Exception as e:
-            logger.error(f"获取 {date} 新闻时出错：{e}")
-            return None
+            except Exception as e:
+                logger.error(f"获取 {date} 新闻时出错：{e}")
+                return None
+
+        if session is not None:
+            return await _do_fetch(session)
+
+        async with aiohttp.ClientSession() as new_session:
+            return await _do_fetch(new_session)
 
     async def _save_to_cache(self, date: str, content: str):
         """保存内容到本地缓存"""
@@ -125,12 +120,14 @@ class XinwenLianboPlugin(Star):
             logger.warning(f"读取缓存失败：{e}")
             return None
 
-    async def _get_news(self, date: str) -> Optional[DailyNews]:
+    async def _get_news(
+        self, date: str, session: Optional[aiohttp.ClientSession] = None
+    ) -> Optional[DailyNews]:
         """获取指定日期的新闻"""
         content = await self._load_from_cache(date)
 
         if content is None:
-            content = await self._fetch_from_github(date)
+            content = await self._fetch_from_github(date, session=session)
 
         if content is None:
             return None
@@ -138,41 +135,81 @@ class XinwenLianboPlugin(Star):
         return self._parse_news(date, content)
 
     def _parse_news(self, date: str, content: str) -> DailyNews:
-        """解析 Markdown 格式的新闻内容"""
-        items = []
-
+        """使用 markdown 库解析新闻内容"""
         year = date[:4]
         month = date[4:6]
         day = date[6:8]
         date_display = f"{year}年{month}月{day}日"
 
-        pattern = r'##+\s*(.+?)\n\n?([\s\S]*?)(?=##+|\Z)'
-        matches = re.findall(pattern, content)
+        items = []
+        html = markdown.markdown(content)
+        try:
+            root = ET.fromstring(f"<root>{html}</root>")
+        except ET.ParseError:
+            return DailyNews(
+                date=date, date_display=date_display,
+                items=[NewsItem(title="新闻联播", content=content, category="综合")],
+                raw_content=content,
+            )
 
-        for title, item_content in matches:
-            title = title.strip()
-            item_content = item_content.strip()
+        current_title = None
+        current_parts: List[str] = []
+        in_detail_section = False
 
-            if title and item_content:
-                category = self._detect_category(title, item_content)
-                items.append(NewsItem(
-                    title=title,
-                    content=item_content,
-                    category=category
-                ))
+        def _element_text(el: ET.Element) -> str:
+            """递归提取元素内所有文本（包括子标签中的文本）"""
+            return "".join(el.itertext()).strip()
+
+        def _save_current():
+            nonlocal current_title, current_parts
+            if current_title and current_parts:
+                body = "\n".join(current_parts).strip()
+                if body:
+                    items.append(NewsItem(
+                        title=current_title,
+                        content=body,
+                        category=self._detect_category(current_title, body),
+                    ))
+            current_title = None
+            current_parts = []
+
+        for el in root:
+            tag = el.tag.lower()
+
+            if tag == "h2":
+                heading = _element_text(el)
+                if heading == "详细新闻":
+                    in_detail_section = True
+                continue
+
+            if tag == "h3" and in_detail_section:
+                _save_current()
+                current_title = _element_text(el)
+                continue
+
+            if tag in ("h1", "hr"):
+                continue
+
+            # 正文段落、列表等
+            if current_title:
+                text = _element_text(el)
+                if text:
+                    current_parts.append(text)
+
+        _save_current()
 
         if not items:
             items.append(NewsItem(
                 title="新闻联播",
                 content=content,
-                category="综合"
+                category="综合",
             ))
 
         return DailyNews(
             date=date,
             date_display=date_display,
             items=items,
-            raw_content=content
+            raw_content=content,
         )
 
     def _detect_category(self, title: str, content: str) -> str:
@@ -220,98 +257,37 @@ class XinwenLianboPlugin(Star):
 
         return result.strip()
 
-    def _truncate_content(self, news: DailyNews, max_length: int = 4000) -> str:
-        """截断新闻内容以适应 LLM 上下文限制"""
+    def _truncate_content(self, news: DailyNews, max_length: int = 6000) -> str:
+        """截断新闻内容以适应 LLM 上下文限制，保留完整标题，只截断正文"""
         full_content = f"新闻联播 {news.date_display}\n\n"
         current_length = len(full_content)
 
         for item in news.items:
-            item_text = f"## {item.title}\n{item.content}\n\n"
-            if current_length + len(item_text) > max_length:
-                remaining = max_length - current_length - 100
-                if remaining > 50:
-                    truncated_content = item.content[:remaining] + "..."
-                    full_content += f"## {item.title}\n{truncated_content}\n\n"
-                else:
-                    full_content += f"## {item.title}\n[内容省略]\n\n"
+            title_line = f"## {item.title}\n"
+            current_length += len(title_line)
+
+            remaining = max_length - current_length - 10  # 留余量给换行符
+            if remaining <= 0:
+                full_content += title_line + "[内容省略]\n\n"
                 break
-            full_content += item_text
-            current_length += len(item_text)
+
+            if len(item.content) <= remaining:
+                full_content += title_line + item.content + "\n\n"
+                current_length += len(item.content) + 2
+            else:
+                truncated = item.content[:remaining] + "..."
+                full_content += title_line + truncated + "\n\n"
+                break
 
         return full_content
 
     async def _summarize_with_ai(self, event: AstrMessageEvent, news: DailyNews, summary_type: str = "brief") -> str:
         
-        # 准备提示词模板
-        if summary_type == "brief":
-            prompt_template = """请对以下新闻联播内容进行简要总结：
+        prompt_template = self.prompts.get(summary_type)
+        if not prompt_template:
+            prompt_template = self.prompts.get("brief", "请总结以下新闻内容：\n\n{content}")
 
-{content}
-
-要求：
-1. 总结主要新闻要点（3-5 条）
-2. 每条要点简洁明了，不超过 50 字
-3. 突出重要政策、事件和数据
-4. 使用中文输出
-
-请按以下格式输出：
-## 今日要闻总结
-
-1. [要点 1]
-2. [要点 2]
-3. [要点 3]
-..."""
-        elif summary_type == "detailed":
-            prompt_template = """请对以下新闻联播内容进行详细分析和总结：
-
-{content}
-
-要求：
-1. 分领域总结（时政、经济、社会、国际等）
-2. 每个领域列出重要新闻并简要分析
-3. 提炼今日政策重点和趋势
-4. 使用中文输出
-
-请按以下格式输出：
-## 新闻联播深度分析
-
-### 一、时政要闻
-...
-
-### 二、经济动态
-...
-
-### 三、社会民生
-...
-
-### 四、国际视野
-...
-
-### 五、今日要点
-总结今日最重要的 1-3 个要点"""
-        else:
-            prompt_template = """请对以下新闻联播内容按类别进行分类总结：
-
-{content}
-
-要求：
-1. 将新闻按类别分组（时政、经济、科技、社会、国际等）
-2. 每类列出相关新闻标题
-3. 统计各类别新闻数量
-4. 使用中文输出
-
-请按以下格式输出：
-## 新闻分类统计
-
-### 时政（X 条）
-- [新闻标题 1]
-- [新闻标题 2]
-...
-
-### 经济（X 条）
-..."""
-
-        full_content = self._truncate_content(news, max_length=4000)
+        full_content = self._truncate_content(news, max_length=6000)
         prompt = prompt_template.format(content=full_content)
 
         try:
@@ -412,25 +388,30 @@ class XinwenLianboPlugin(Star):
 
         yield event.plain_result(f"正在搜索包含「{keyword}」的新闻...")
 
-        results = []
         today = datetime.now()
+        dates = [(today - timedelta(days=i)).strftime('%Y%m%d') for i in range(30)]
 
-        for i in range(30):
-            date = (today - timedelta(days=i)).strftime('%Y%m%d')
-            news = await self._get_news(date)
+        semaphore = asyncio.Semaphore(self.CONCURRENCY_LIMIT)
 
-            if news:
-                matched_items = []
-                for item in news.items:
-                    if keyword.lower() in item.title.lower() or keyword.lower() in item.content.lower():
-                        matched_items.append(item)
+        async def _limited_get_news(date: str, session: aiohttp.ClientSession):
+            async with semaphore:
+                return await self._get_news(date, session=session)
 
-                if matched_items:
-                    results.append({
-                        'date': news.date_display,
-                        'items': matched_items
-                    })
+        async with aiohttp.ClientSession() as session:
+            news_list: List[Optional[DailyNews]] = await asyncio.gather(
+                *[_limited_get_news(date, session) for date in dates],
+            )
 
+        results = []
+        for news in news_list:
+            if news is None:
+                continue
+            matched_items = [
+                item for item in news.items
+                if keyword.lower() in item.title.lower() or keyword.lower() in item.content.lower()
+            ]
+            if matched_items:
+                results.append({'date': news.date_display, 'items': matched_items})
             if len(results) >= 5:
                 break
 
@@ -443,8 +424,7 @@ class XinwenLianboPlugin(Star):
             result_text += f"### {r['date']}\n"
             for item in r['items']:
                 result_text += f"- **{item.title}**\n"
-                content_preview = self._extract_context(item.content, keyword)
-                result_text += f"  {content_preview}\n\n"
+                result_text += f"  {item.content}\n\n"
 
         yield event.plain_result(result_text)
 
@@ -535,24 +515,3 @@ class XinwenLianboPlugin(Star):
             return f"{match.group(1)}{match.group(2)}{match.group(3)}"
 
         return None
-
-    def _extract_context(self, content: str, keyword: str, context_length: int = 50) -> str:
-        """提取关键词所在的上下文"""
-        content_lower = content.lower()
-        keyword_lower = keyword.lower()
-
-        pos = content_lower.find(keyword_lower)
-        if pos == -1:
-            return content[:100] + "..." if len(content) > 100 else content
-
-        start = max(0, pos - context_length)
-        end = min(len(content), pos + len(keyword) + context_length)
-
-        context = content[start:end]
-
-        if start > 0:
-            context = "..." + context
-        if end < len(content):
-            context = context + "..."
-
-        return context
