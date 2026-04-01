@@ -1,0 +1,8 @@
+name: astrbot_plugin_xinwen_lianbo
+display_name: astrbot_plugin_xinwen_lianbo 新闻联播
+desc: "每天获取新闻联播，并让大模型进行分析和摘要。"
+version: v1.0.0
+author: freeliujian
+repo: https://github.com/freeliujian/astrbot_plugin_xinwen_lianbo
+keywords:
+  - kimi
