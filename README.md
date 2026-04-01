@@ -77,47 +77,6 @@
 | `/xinwen-latest [天数]` | 查看最近几天新闻 | `/xinwen-latest 5` |
 | `/xinwen-help` | 显示帮助信息 | `/xinwen-help` |
 
-## 常见问题
-
-### Q1: 报错 "AI 总结失败：Error code: 502"
-
-**原因**: LLM 服务商暂时不可用或网络问题
-
-**解决方案**:
-1. 检查网络连接
-2. 等待 1-2 分钟后重试
-3. 检查 LLM 配置是否正确
-
-### Q2: 报错 "未配置 LLM 提供商"
-
-**原因**: 没有在 AstrBot 中配置大模型
-
-**解决方案**:
-在 `config.yaml` 中配置 LLM:
-```yaml
-llm_settings:
-  default_provider: "openai"
-  openai:
-    api_key: "sk-..."
-    model: "gpt-3.5-turbo"
-```
-
-### Q3: 插件无法加载
-
-**原因**: AstrBot 版本过低
-
-**解决方案**:
-升级到 v4.5.7+ 版本，新版本使用了不同的 LLM API
-
-### Q4: 获取新闻失败
-
-**原因**: GitHub 网络访问问题
-
-**解决方案**:
-1. 检查网络连接
-2. 使用代理
-3. 稍后重试（缓存机制会自动保存已获取的新闻）
-
 ## 技术实现
 
 ### 数据来源
@@ -130,13 +89,35 @@ llm_settings:
 - 缓存有效期：1 小时
 - 日期列表缓存：24 小时
 
+## 调试方法
+
+### 测试 LLM 调用
+
+```bash
+cd xinwen_lianbo
+python test_llm.py
+```
+
+### 查看日志
+
+```bash
+tail -f logs/astrbot.log
+```
+
+### 启用调试模式
+
+在 `main.py` 中添加:
+```python
+logger.debug(f"Provider ID: {provider_id}")
+logger.debug(f"Prompt: {prompt[:100]}...")
+```
 
 ## 注意事项
 
 1. **版本要求**: AstrBot >= v4.5.7
 2. **网络依赖**: 首次查询需要从 GitHub 下载数据
 3. **数据范围**: 数据从 2023 年开始
-4. **LLM 配置**: 需要配置 LLM 才能使用总结功能(Dp 等国内模型可能不能总结)
+4. **LLM 配置**: 需要配置 LLM 才能使用总结功能(Dp 等国内模型不能总结)
 
 ## 许可证
 
