@@ -26,6 +26,7 @@ from astrbot.api import logger
 @dataclass
 class NewsItem:
     """单条新闻数据结构"""
+
     title: str
     content: str
     category: str = ""
@@ -34,15 +35,20 @@ class NewsItem:
 @dataclass
 class DailyNews:
     """单日新闻联播数据结构"""
+
     date: str
     date_display: str
     items: List[NewsItem]
     raw_content: str
 
 
-@register("xinwen_lianbo", "freeliujian", "新闻联播查询插件 - 查询并 AI 总结新闻联播内容", "1.0.0")
+@register(
+    "xinwen_lianbo",
+    "freeliujian",
+    "新闻联播查询插件 - 查询并 AI 总结新闻联播内容",
+    "1.0.0",
+)
 class XinwenLianboPlugin(Star):
-
     DATA_SOURCE_URL = "https://raw.githubusercontent.com/DuckBurnIncense/xin-wen-lian-bo/master/news/{date}.md"
 
     CONCURRENCY_LIMIT = 10
@@ -61,7 +67,7 @@ class XinwenLianboPlugin(Star):
         """从 JSON 文件加载提示词模板"""
         prompts_file = os.path.join(os.path.dirname(__file__), "prompts.json")
         try:
-            with open(prompts_file, 'r', encoding='utf-8') as f:
+            with open(prompts_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
             logger.error(f"加载提示词文件失败：{e}")
@@ -75,13 +81,17 @@ class XinwenLianboPlugin(Star):
 
         async def _do_fetch(s: aiohttp.ClientSession) -> Optional[str]:
             try:
-                async with s.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                async with s.get(
+                    url, timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
                     if response.status == 200:
                         content = await response.text()
                         await self._save_to_cache(date, content)
                         return content
                     else:
-                        logger.warning(f"获取 {date} 新闻失败，状态码：{response.status}")
+                        logger.warning(
+                            f"获取 {date} 新闻失败，状态码：{response.status}"
+                        )
                         return None
             except Exception as e:
                 logger.error(f"获取 {date} 新闻时出错：{e}")
@@ -97,7 +107,7 @@ class XinwenLianboPlugin(Star):
         """保存内容到本地缓存"""
         cache_file = os.path.join(self.cache_dir, f"{date}.md")
         try:
-            async with aiofiles.open(cache_file, 'w', encoding='utf-8') as f:
+            async with aiofiles.open(cache_file, "w", encoding="utf-8") as f:
                 await f.write(content)
         except Exception as e:
             logger.warning(f"保存缓存失败：{e}")
@@ -114,7 +124,7 @@ class XinwenLianboPlugin(Star):
             return None
 
         try:
-            async with aiofiles.open(cache_file, 'r', encoding='utf-8') as f:
+            async with aiofiles.open(cache_file, "r", encoding="utf-8") as f:
                 return await f.read()
         except Exception as e:
             logger.warning(f"读取缓存失败：{e}")
@@ -147,7 +157,8 @@ class XinwenLianboPlugin(Star):
             root = ET.fromstring(f"<root>{html}</root>")
         except ET.ParseError:
             return DailyNews(
-                date=date, date_display=date_display,
+                date=date,
+                date_display=date_display,
                 items=[NewsItem(title="新闻联播", content=content, category="综合")],
                 raw_content=content,
             )
@@ -165,11 +176,13 @@ class XinwenLianboPlugin(Star):
             if current_title and current_parts:
                 body = "\n".join(current_parts).strip()
                 if body:
-                    items.append(NewsItem(
-                        title=current_title,
-                        content=body,
-                        category=self._detect_category(current_title, body),
-                    ))
+                    items.append(
+                        NewsItem(
+                            title=current_title,
+                            content=body,
+                            category=self._detect_category(current_title, body),
+                        )
+                    )
             current_title = None
             current_parts = []
 
@@ -199,11 +212,13 @@ class XinwenLianboPlugin(Star):
         _save_current()
 
         if not items:
-            items.append(NewsItem(
-                title="新闻联播",
-                content=content,
-                category="综合",
-            ))
+            items.append(
+                NewsItem(
+                    title="新闻联播",
+                    content=content,
+                    category="综合",
+                )
+            )
 
         return DailyNews(
             date=date,
@@ -218,12 +233,50 @@ class XinwenLianboPlugin(Star):
         content_lower = content.lower()
 
         category_keywords = {
-            "时政": ["习近平", "总书记", "主席", "总理", "人大", "政协", "政治局", "会议"],
-            "经济": ["经济", "发展", "增长", "GDP", "产业", "企业", "市场", "金融", "贸易"],
-            "科技": ["科技", "创新", "技术", "研发", "人工智能", "芯片", "航天", "卫星"],
+            "时政": [
+                "习近平",
+                "总书记",
+                "主席",
+                "总理",
+                "人大",
+                "政协",
+                "政治局",
+                "会议",
+            ],
+            "经济": [
+                "经济",
+                "发展",
+                "增长",
+                "GDP",
+                "产业",
+                "企业",
+                "市场",
+                "金融",
+                "贸易",
+            ],
+            "科技": [
+                "科技",
+                "创新",
+                "技术",
+                "研发",
+                "人工智能",
+                "芯片",
+                "航天",
+                "卫星",
+            ],
             "社会": ["民生", "就业", "教育", "医疗", "社保", "住房", "养老"],
             "文化": ["文化", "艺术", "文物", "非遗", "旅游", "体育", "奥运"],
-            "国际": ["国际", "外交", "访问", "会谈", "合作", "联合国", "美国", "俄罗斯", "欧洲"],
+            "国际": [
+                "国际",
+                "外交",
+                "访问",
+                "会谈",
+                "合作",
+                "联合国",
+                "美国",
+                "俄罗斯",
+                "欧洲",
+            ],
             "军事": ["军队", "国防", "军事", "演习", "装备", "官兵"],
             "农业": ["农业", "农村", "农民", "粮食", "丰收", "乡村振兴"],
             "生态": ["生态", "环保", "绿色", "气候", "碳达峰", "碳中和", "环境"],
@@ -248,7 +301,7 @@ class XinwenLianboPlugin(Star):
             result += "\n"
 
             if show_content:
-                content_preview = item.content[:200].replace('\n', ' ')
+                content_preview = item.content[:200].replace("\n", " ")
                 if len(item.content) > 200:
                     content_preview += "..."
                 result += f"   {content_preview}\n"
@@ -281,17 +334,20 @@ class XinwenLianboPlugin(Star):
 
         return full_content
 
-    async def _summarize_with_ai(self, event: AstrMessageEvent, news: DailyNews, summary_type: str = "brief") -> str:
-        
+    async def _summarize_with_ai(
+        self, event: AstrMessageEvent, news: DailyNews, summary_type: str = "brief"
+    ) -> str:
+
         prompt_template = self.prompts.get(summary_type)
         if not prompt_template:
-            prompt_template = self.prompts.get("brief", "请总结以下新闻内容：\n\n{content}")
+            prompt_template = self.prompts.get(
+                "brief", "请总结以下新闻内容：\n\n{content}"
+            )
 
         full_content = self._truncate_content(news, max_length=6000)
         prompt = prompt_template.format(content=full_content)
 
         try:
-            
             event.should_call_llm(True)
 
             umo = event.unified_msg_origin
@@ -300,8 +356,7 @@ class XinwenLianboPlugin(Star):
             logger.info(f"使用 LLM 提供商 ID: {provider_id}")
 
             llm_resp = await self.context.llm_generate(
-                chat_provider_id=provider_id,
-                prompt=prompt
+                chat_provider_id=provider_id, prompt=prompt
             )
 
             # 步骤 3: 获取返回文本
@@ -313,7 +368,7 @@ class XinwenLianboPlugin(Star):
         except Exception as e:
             logger.error(f"AI 总结失败：{e}")
             error_str = str(e)
-            
+
             # 友好的错误提示
             if "502" in error_str:
                 return "❌ AI 总结失败：LLM 服务商暂时不可用（502 错误），请稍后重试。"
@@ -329,7 +384,9 @@ class XinwenLianboPlugin(Star):
         """查询新闻联播"""
         parsed_date = self._parse_date(date)
         if not parsed_date:
-            yield event.plain_result("日期格式错误。支持的格式：today, yesterday, YYYYMMDD, YYYY-MM-DD")
+            yield event.plain_result(
+                "日期格式错误。支持的格式：today, yesterday, YYYYMMDD, YYYY-MM-DD"
+            )
             return
 
         yield event.plain_result(f"正在获取 {parsed_date} 的新闻联播...")
@@ -337,18 +394,24 @@ class XinwenLianboPlugin(Star):
         news = await self._get_news(parsed_date)
 
         if not news:
-            yield event.plain_result(f"未找到 {parsed_date} 的新闻联播内容。\n可能原因：\n1. 该日期没有新闻联播\n2. 数据尚未更新\n3. 网络连接问题")
+            yield event.plain_result(
+                f"未找到 {parsed_date} 的新闻联播内容。\n可能原因：\n1. 该日期没有新闻联播\n2. 数据尚未更新\n3. 网络连接问题"
+            )
             return
 
         result = self._format_news(news, show_content=True)
         yield event.plain_result(result)
 
     @filter.command("xinwen-summary")
-    async def summarize_news(self, event: AstrMessageEvent, date: str = "today", style: str = "brief"):
+    async def summarize_news(
+        self, event: AstrMessageEvent, date: str = "today", style: str = "brief"
+    ):
         """AI 总结新闻联播"""
         parsed_date = self._parse_date(date)
         if not parsed_date:
-            yield event.plain_result("日期格式错误。支持的格式：today, yesterday, YYYYMMDD, YYYY-MM-DD")
+            yield event.plain_result(
+                "日期格式错误。支持的格式：today, yesterday, YYYYMMDD, YYYY-MM-DD"
+            )
             return
 
         if style not in ["brief", "detailed", "category"]:
@@ -370,7 +433,11 @@ class XinwenLianboPlugin(Star):
             cat = item.category or "综合"
             category_counts[cat] = category_counts.get(cat, 0) + 1
         if category_counts:
-            news_stats += "（" + ", ".join([f"{k}:{v}" for k, v in category_counts.items()]) + "）"
+            news_stats += (
+                "（"
+                + ", ".join([f"{k}:{v}" for k, v in category_counts.items()])
+                + "）"
+            )
 
         yield event.plain_result(news_stats)
         yield event.plain_result("正在进行 AI 分析，请稍候（可能需要 10-30 秒）...")
@@ -389,7 +456,7 @@ class XinwenLianboPlugin(Star):
         yield event.plain_result(f"正在搜索包含「{keyword}」的新闻...")
 
         today = datetime.now()
-        dates = [(today - timedelta(days=i)).strftime('%Y%m%d') for i in range(30)]
+        dates = [(today - timedelta(days=i)).strftime("%Y%m%d") for i in range(30)]
 
         semaphore = asyncio.Semaphore(self.CONCURRENCY_LIMIT)
 
@@ -407,11 +474,13 @@ class XinwenLianboPlugin(Star):
             if news is None:
                 continue
             matched_items = [
-                item for item in news.items
-                if keyword.lower() in item.title.lower() or keyword.lower() in item.content.lower()
+                item
+                for item in news.items
+                if keyword.lower() in item.title.lower()
+                or keyword.lower() in item.content.lower()
             ]
             if matched_items:
-                results.append({'date': news.date_display, 'items': matched_items})
+                results.append({"date": news.date_display, "items": matched_items})
             if len(results) >= 5:
                 break
 
@@ -422,7 +491,7 @@ class XinwenLianboPlugin(Star):
         result_text = f"## 搜索「{keyword}」的结果\n\n"
         for r in results:
             result_text += f"### {r['date']}\n"
-            for item in r['items']:
+            for item in r["items"]:
                 result_text += f"- **{item.title}**\n"
                 result_text += f"  {item.content}\n\n"
 
@@ -440,7 +509,7 @@ class XinwenLianboPlugin(Star):
         today = datetime.now()
 
         for i in range(days):
-            date = (today - timedelta(days=i)).strftime('%Y%m%d')
+            date = (today - timedelta(days=i)).strftime("%Y%m%d")
             news = await self._get_news(date)
             if news:
                 results.append(news)
@@ -499,18 +568,18 @@ class XinwenLianboPlugin(Star):
         date_str = date_str.lower().strip()
 
         if date_str == "today":
-            return datetime.now().strftime('%Y%m%d')
+            return datetime.now().strftime("%Y%m%d")
         elif date_str == "yesterday":
-            return (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+            return (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
 
-        if re.match(r'^\d{8}$', date_str):
+        if re.match(r"^\d{8}$", date_str):
             return date_str
 
-        match = re.match(r'^(\d{4})-(\d{2})-(\d{2})$', date_str)
+        match = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", date_str)
         if match:
             return f"{match.group(1)}{match.group(2)}{match.group(3)}"
 
-        match = re.match(r'^(\d{4})/(\d{2})/(\d{2})$', date_str)
+        match = re.match(r"^(\d{4})/(\d{2})/(\d{2})$", date_str)
         if match:
             return f"{match.group(1)}{match.group(2)}{match.group(3)}"
 
