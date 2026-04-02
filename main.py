@@ -162,7 +162,6 @@ class XinwenLianboPlugin(Star):
                 items=[NewsItem(title="新闻联播", content=content, category="综合")],
                 raw_content=content,
             )
-
         current_title = None
         current_parts: List[str] = []
         in_detail_section = False
@@ -234,7 +233,6 @@ class XinwenLianboPlugin(Star):
 
         category_keywords = {
             "时政": [
-                "习近平",
                 "总书记",
                 "主席",
                 "总理",
@@ -292,21 +290,16 @@ class XinwenLianboPlugin(Star):
 
     def _format_news(self, news: DailyNews, show_content: bool = True) -> str:
         """格式化新闻输出"""
-        result = f"## 新闻联播 {news.date_display}\n\n"
+        result = f"**日期 {news.date_display}** \n\n"
 
         for idx, item in enumerate(news.items, 1):
-            result += f"{idx}. **{item.title}**"
+            result += f"{idx}. **{item.title}** "
             if item.category:
                 result += f" `[{item.category}]`"
             result += "\n"
 
             if show_content:
-                content_preview = item.content[:200].replace("\n", " ")
-                if len(item.content) > 200:
-                    content_preview += "..."
-                result += f"   {content_preview}\n"
-
-            result += "\n"
+                result += f"   {item.content}\n\n"
 
         return result.strip()
 
@@ -399,7 +392,7 @@ class XinwenLianboPlugin(Star):
             )
             return
 
-        result = self._format_news(news, show_content=True)
+        result = self._format_news(news, show_content=True, show_preview=True)
         yield event.plain_result(result)
 
     @filter.command("xinwen-summary")
